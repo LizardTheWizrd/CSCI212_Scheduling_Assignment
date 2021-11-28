@@ -1,0 +1,362 @@
+#!/bin/sh
+#Functions---------------------------------------------------------------------------
+merge() {
+    local first=2
+    local second=$(( $1 + 2 ))
+    for i in ${@:2}
+    do
+        if [[ $first -eq $(( $1 + 2 )) ]]
+        then
+            echo ${@:$second:1} ; ((second += 1))
+        else
+            if [[ $second -eq $(( ${#@} + 1 )) ]]
+            then
+                echo ${@:$first:1} ; ((first += 1))
+            else
+                if [[ ${@:$first:1} -lt ${@:$second:1} ]]
+                then
+                    echo ${@:$first:1} ; ((first += 1))
+                else
+                    echo ${@:$second:1} ; ((second += 1))
+                fi
+            fi
+        fi
+    done
+}
+
+mergesort() {
+    if [[ $1 -ge 2 ]]
+    then
+        local med=$(( $1 / 2 ))
+        local first=( $(mergesort $med ${@:2:$med}) )
+        local second=( $(mergesort $(( $1 - $med )) ${@:$(( $med + 2 )):$(( $1 - $med ))}) )
+        echo $(merge $med ${first[@]} ${second[@]})
+    else
+        echo $2
+    fi
+}
+
+#Display Choices---------------------------------------------------------------------
+displayChoices () {
+	echo "${colorTextBlue}Which way would you like to schedule the CPU processes"
+	echo "1. First Come First Serve"
+	echo "2. Shortest Job First"
+	echo "3. Round Robin"
+	echo "${colorTextOrange}Enter the number of the Option${colorTextReset}"
+	return 0
+}
+
+#Fist Come First Serve---------------------------------------------------------------
+firstComeFirstServe () {
+    local order=$1[@]
+    local times=$2[@]
+    local fNumOfProcesses=$3
+    local a=("${!order}")
+    local b=("${!times}")
+    local burstTimesFCFS=()
+    local burstTimesFCFSTemp="0"
+    local sumFCFSWaitTime=0
+    local individualWaitTimes=0
+    local k=0 
+    local l=0
+    local countr=1
+    local displayFCFSOrder="Scheduling Order:"
+    local displayFCFSBurstTime="Wait Times: "
+    
+    for i in "${a[@]}" ; do
+        displayFCFSOrder="${displayFCFSOrder} ${i}"
+    done
+    for j in "${b[@]}" ; do
+        burstTimesFCFSTemp="${burstTimesFCFSTemp}  ${j} "
+    done
+
+    while [ $k -lt $(($fNumOfProcesses - 1)) ]
+    do
+        sumFCFSWaitTime=`expr $sumFCFSWaitTime + ${burstTimes[k]}`
+        k=`expr $k + 1`
+    done
+    
+    burstTimesFCFS=($burstTimesFCFSTemp)
+    unset burstTimesFCFS[$fNumOfProcesses]
+    
+    while [ $l -lt $(($fNumOfProcesses)) ]
+    do
+        individualWaitTimes=`expr $individualWaitTimes + ${burstTimesFCFS[$l]}`
+        displayFCFSBurstTime="${displayFCFSBurstTime} P${countr} --> $individualWaitTimes"
+        l=`expr $l + 1`
+        countr=`expr $countr + 1`
+    done
+    
+    echo "${colorTextBlue}$displayFCFSOrder"
+    echo $displayFCFSBurstTime
+    printf "The average wait time is: "
+    echo "scale=2 ; $sumFCFSWaitTime / $(($fNumOfProcesses))" | bc
+    return 0
+}
+
+#Shortest Job First-----------------------------------------------------------------
+shortestJobFirst() {
+
+	local fNumOfProcesses=$1
+	shift
+	local times=("$@")
+	local tempTimes=("${!times}")
+	local orderTemp=()
+	local burstTimesSJF=()
+	local displaySJFOrder="Scheduling Order: "
+	local displaySJFBurstTime="Wait Times: "
+	local sumSJFWaitTime=0
+
+	burstTimesTemp=$(mergesort "${#times[@]}" ${times[@]})
+	burstTimesSJF=($burstTimesTemp)
+	
+
+	for(( i=0;i<$(($fNumOfProcesses - 1));i++ ))
+	do
+		sumSJFWaitTime=`expr $sumSJFWaitTime + ${burstTimesSJF[i]}`
+	done
+		
+		
+	local x=0
+	local y=0
+	local z=0
+
+	while [ $x -lt ${#times[@]} ] 
+	do
+		if [ ${burstTimesSJF[$x]} -eq ${times[$y]} ]
+		then
+			temp=`expr $y + 1`
+		    	orderTemp[$z]="P$temp"
+		    	x=`expr $x + 1`
+		    	z=`expr $z + 1`
+		fi
+		y=`expr $y + 1`
+
+		if [ $y -eq ${#times[@]} ]
+		then
+			y=0
+		fi
+	done
+		
+	local l=0
+	local waitTimes=0
+	for(( i=0;i<${#orderTemp[@]};i++ ))
+	do
+		if [ $i -ne `expr ${#orderTemp[@]} - 1` ]
+		then
+			displaySJFOrder+="${orderTemp[$i]} -->  "
+		else
+			displaySJFOrder+="${orderTemp[$i]}"
+		fi	
+	done
+	
+	
+	
+	while [ $l -lt $(($fNumOfProcesses)) ]
+	do
+		displaySJFBurstTime+="  ${orderTemp[$l]} --> ${waitTimes}"
+		waitTimes=`expr $waitTimes + ${burstTimesSJF[$l]}`
+		l=`expr $l + 1`
+	done
+
+
+	echo "${colorTextBlue}$displaySJFOrder"
+	echo "$displaySJFBurstTime"
+	
+	printf "The average wait time is: "
+	echo "scale=2 ; $sumSJFWaitTime / $(($fNumOfProcesses))" | bc
+}
+
+
+#Round Robin-------------------------------------------------------------------------
+roundRobin(){
+
+local quantumTime=$1
+local -n array2=$2
+local -n array=$3
+local originalSize="${#array[@]}"
+local size="${#array[@]}"
+local averageWaitTime="Average wait time is: "
+
+x=0
+y=0
+individualWaitTime=0
+displayRoundRobinOrder="Scheduling Order: "
+displayRoundRobinWaitTimes="Wait time is: "
+
+while [ $x -lt $size ]
+do
+    if [ ${array[$x]} -gt $quantumTime ]
+    then
+        size=`expr $size + 1`
+        sizeMinus1=`expr $size - 1`
+        array[$sizeMinus1]=`expr ${array[$x]} - $quantumTime`
+        array2[$sizeMinus1]=${array2[$x]}
+        array[$x]=$quantumTime
+    fi
+    x=`expr $x + 1`
+done
+
+sizeMinus1=`expr $size - 1`
+
+while [ $y -le $sizeMinus1 ]
+do
+    indexMinus1=`expr $y - 1`
+    displayRoundRobinWaitTimes="${displayRoundRobinWaitTimes} ${array2[$y]} --> $individualWaitTime "
+    individualWaitTime=`expr $individualWaitTime + ${array[$y]}`
+    y=`expr $y + 1`
+done
+
+
+
+averageWaitTime+="`expr $(($((originalSize)) - 1)) \* $quantumTime`"
+
+echo "${colorTextBlue}$displayRoundRobinOrder ${array2[@]}"
+echo $displayRoundRobinWaitTimes
+echo $averageWaitTime
+
+
+}
+
+#Colors------------------------------------------------------------------------------
+colorTextRed=`tput setaf 1`
+colorTextBlue=`tput setaf 14`
+colorTextOrange=`tput setaf 222`
+colorTextReset=`tput sgr0`
+
+
+
+#Main--------------------------------------------------------------------------------
+bursTimes=()
+processNumbers=()
+validChoice=0
+validNumberOfProcesses=0
+validRunAgainChoice=0
+validQuantumTime=0
+continueCount=0
+runCount=0
+x=0
+y=1
+re='^[0-9]+$'
+
+while [ $continueCount -eq 0 ]
+do
+	if [ $runCount -ge 1 ]
+	then 
+		printf "\n"
+		echo "${colorTextOrange}Would you like to create another schedule?"
+		echo "${colorTextOrange}Enter 1 for YES or enter 2 for NO${colorTextReset}"
+		
+		while [ $validRunAgainChoice -eq 0 ]
+		do
+			read runAgain
+			if ! [[ $runAgain =~ $re ]]
+			then
+				echo "${colorTextRed}Please enter either 1 or 2${colorTextReset}"
+			else
+				if [ $runAgain -eq 2 ]
+				then
+					break 2
+				elif [ $runAgain -eq 1 ]
+				then
+					break
+				elif [ $runAgain -ne 1 ] || [ $runAgain -ne 2 ]
+				then
+					echo "${colorTextRed}Please enter either 1 or 2${colorTextReset}"
+				fi
+			fi
+		done
+	fi
+	
+	
+	
+	echo "${colorTextOrange}How many processes would you like to enter?${colorTextReset}"
+
+	while [ $validNumberOfProcesses -lt 1 ]
+	do
+		read numOfProcesses
+		if ! [[ $numOfProcesses =~ $re ]]
+		then
+			echo "${colorTextRed}Enter A Numerical Value Greater Than 0${colorTextReset}"
+		else
+			if [ $numOfProcesses -gt 0 ]
+			then
+				validNumberOfProcesses=1
+			else 
+				echo "${colorTextRed}Enter A Numerical Value Greater Than 0${colorTextReset}"
+			fi
+		fi	
+	done
+
+	echo "${colorTextOrange}Enter the CPU burst Time for processes in nano second${colorTextReset}"
+
+	while [ $x -lt $numOfProcesses ]
+	do
+		read time
+		if ! [[ $time =~ $re ]]
+		then
+			echo "${colorTextRed}Enter Numerical Value Greater Than 0${colorTextReset}"
+		else
+			if [ $time -gt 0 ] 
+			then
+				processNumbers[$x]="P${y}"
+				burstTimes[$x]=$time 
+				x=`expr $x + 1`
+				y=`expr $y + 1`
+			else
+				echo "${colorTextRed}Enter a number greater than 0${colorTextReset}"
+			fi
+		fi
+	done
+
+	while [ $validChoice -lt 1 ]
+	do
+		displayChoices
+		read option	
+		
+		case $option in
+
+		1)
+			firstComeFirstServe processNumbers burstTimes numOfProcesses
+			validChoice=1
+			;;
+		2)
+			shortestJobFirst "$numOfProcesses" "${burstTimes[@]}" 
+			validChoice=1
+			;;
+		3)
+			echo "${colorTextOrange}Enter the Quantum Time${colorTextReset}"
+			while [ $validQuantumTime -lt 1 ]
+			do
+				read quantumTime
+				if ! [[ $quantumTime =~ $re ]]
+				then
+					echo "${colorTextRed}Enter A Numerical Value Greater Than 0${colorTextReset}"
+				else
+					if [ $quantumTime -gt 0 ]
+					then
+						validQuantumTime=1
+					else 
+						echo "${colorTextRed}Enter A Numerical Value Greater Than 0${colorTextReset}"
+					fi
+				fi
+			done
+			
+			roundRobin "$quantumTime" processNumbers burstTimes
+			validChoice=1
+			;;
+		*)
+			echo "${colorTextRed}Enter Valid Number${colorTextReset}"
+			option=""
+			;;
+		esac
+	done
+	runCount=`expr $runCount + 1`
+	bursTimes=()
+	processNumbers=()
+	validChoice=0
+	validNumberOfProcesses=0
+	validRunAgainChoice=0
+	x=0
+	y=1
+done
